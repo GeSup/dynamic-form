@@ -1,0 +1,38 @@
+{
+  "name": {
+    "type": "text",
+    "validators": ["required", "max-len:20", "min-len:3"],
+    "visibility": "always"
+  },
+  "surname": {
+    "type": "text",
+    "validators": ["required", "max-len:20", "min-len:3"],
+    "visibility": "always"
+  },
+  "nationality": {
+    "type": "select",
+    "validators": ["required"],
+    "dataset": ["PL", "GB", "DE"],
+    "visibility": "always"
+  },
+  "pesel": {
+    "type": "text",
+    "validators": ["required", "len:11"],
+    "visibility": "nationality === PL"
+  },
+
+  "test checkbox": {
+    "type": "checkbox",
+    "dataset": ["test1","test2","test3"],
+    "visibility": "always"
+  },
+  "test radio":{
+    "type": "radio-group",
+    "dataset": ["radio1", "radio2", "radio3"],
+    "visibility": "always"
+  },
+  "test textarea": {
+    "type": "textarea",
+    "visibility": "always"
+  }
+}
