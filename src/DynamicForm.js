@@ -5,10 +5,28 @@ import { LionTextarea } from '@lion/textarea';
 import '@lion/checkbox-group/define';
 import { LionRadioGroup, LionRadio } from '@lion/radio-group';
 import { ajax } from '@lion/ajax';
-import { Required } from '@lion/form-core';
-import { loadDefaultFeedbackMessages } from '@lion/validate-messages';
+import { Required, EqualsLength, MinLength, MaxLength } from '@lion/form-core';
+import { LionButtonSubmit } from '@lion/button';
 
+Required.getMessage = async (data) => {
+  console.log('data request => ', data)
+  return `Wartość pola ${data.fieldName} jest wymagana.`
+}
 
+EqualsLength.getMessage = async (data) => {
+  console.log('data EqualsLength :>> ', data);
+  return `Wartość pola ${data.fieldName} nie osiągneła wymaganej ilości znaków. Wymagana długość: ${data.params}`
+}
+
+MinLength.getMessage = async (data) => {
+  console.log('data MinLength => ', data);
+  return `Wartość pola ${data.fieldName} nie osiągneła minimalnej ilości znaków. Minimalna długość: ${data.params}`
+}
+
+MaxLength.getMessage = async (data) => {
+  console.log('data MaxLength => ', data);
+  return `Wartość pola ${data.fieldName} przekroczyła maksymalną ilości znaków. Maksymalna długość: ${data.params}`
+}
 
 export class DynamicForm extends ScopedElementsMixin(LitElement) {
 
@@ -18,7 +36,8 @@ export class DynamicForm extends ScopedElementsMixin(LitElement) {
       'lion-select': LionSelect,
       'lion-textarea': LionTextarea,
       'lion-radio-group': LionRadioGroup,
-      'lion-radio': LionRadio
+      'lion-radio': LionRadio,
+      'lion-button-submit': LionButtonSubmit
     };
   }
 
@@ -34,7 +53,7 @@ export class DynamicForm extends ScopedElementsMixin(LitElement) {
 
   static get properties() {
     return {
-      inputs: { 
+      fields: { 
         type: Array,
       }
     }
@@ -42,17 +61,41 @@ export class DynamicForm extends ScopedElementsMixin(LitElement) {
   
   constructor() {
     super();
-    this.inputs = [];
+    this.fields = [];
     this.__formResults = {};
     ajax.fetchJson('../api/simple-form.json')
     .then(result => {
       if (result.response.status === 200){
-        for (const key of Object.keys(result.body)) {
-          this.inputs = [...this.inputs,{label: key, ...result.body[key]}];
-        }
+        this.fields = this.convertJson(result.body)
       }
     })
-    loadDefaultFeedbackMessages()
+  }
+
+  convertJson(jsonData){
+    const dictionary = {
+      "name": "imie",
+      "surname": "nazwisko",
+      "nationality": "narodowość"
+    }
+    const strToValidator = {
+      "required": () => new Required(),
+      "max-len": (param) => new MaxLength(param),
+      "min-len": (param) => new MinLength(param),
+      "len": (param) => new EqualsLength(param),
+    }
+    const validatorConvert = string => {
+      const [strValidator, param] = string.split(':');
+      return strToValidator[strValidator](param);
+    }
+    const fields = [];
+    for (const key of Object.keys(jsonData)) {
+      if (jsonData[key].validators) jsonData[key].validators = jsonData[key].validators.map(validatorConvert);
+      fields.push({
+        name: key, 
+        label: dictionary[key] || key,
+        ...jsonData[key]});
+    }
+    return fields;
   }
 
   inputHandler(event){
@@ -65,47 +108,43 @@ export class DynamicForm extends ScopedElementsMixin(LitElement) {
     } console.log('this.__formResults :>> ', this.__formResults);
   }
 
-  renderText = (data) => html`
-    <lion-input label=${data.label} name=${data.label.replace(' ', '')} @input=${this.inputHandler} .validators=${[new Required()]}></lion-input>`
-  renderTextArea = (data) => html`
-    <lion-textarea label=${data.label} name=${data.label.replace(' ', '')} @input=${this.inputHandler}></lion-textarea>`
-  renderSelect = (data) => html`
-    <lion-select label=${data.label} name=${data.label.replace(' ', '')} @input=${this.inputHandler}>
-      <select slot="input">
-        <option selected hidden>Please select</option>
-        ${data?.dataset.map(option => html`<option value=${option}>${option}</option>`)}
-      </select>
-    </lion-select>`
-  renderCheckbox = (data) => html`
-    <lion-checkbox-group label=${data.label} name=${data.label} @input=${this.inputHandler}>
-      ${data?.dataset.map(checkbox => html`<lion-checkbox label=${checkbox} .choiceValue=${checkbox} ></lion-checkbox>`)}
-    </lion-checkbox-group>`
-  renderRadioGroup = (data) => html`
-    <lion-radio-group label=${data.label} name=${data.label.replace(' ', '')} @input=${this.inputHandler}>
-      ${data?.dataset.map(radio => html`<lion-radio label=${radio} .choiceValue=${radio}></lion-radio>`)}
-    </lion-radio-group>`
-
-  __renderByType = (input) => {
-    const renderFunc = {
-      'text': 'renderText',
-      'textarea': 'renderTextArea',
-      'select': 'renderSelect',
-      'checkbox': 'renderCheckbox',
-      'radio-group': 'renderRadioGroup'
-    }[input.type];
-    return this[renderFunc](input);
+  templatesForTypes = {
+    "text": (data) => html`
+      <lion-input label=${data.label} name=${data.name} @input=${this.inputHandler} .validators=${data.validators || []}></lion-input>`,
+    "textarea": (data) => html`
+       <lion-textarea label=${data.label} name=${data.name} @input=${this.inputHandler} .validators=${data.validators || []}></lion-textarea>`,
+    "select": (data) => html`
+      <lion-select label=${data.label} name=${data.name} @input=${this.inputHandler} .validators=${data.validators || []}>
+        <select slot="input">
+          <option selected hidden>Wybierz</option>
+          ${data?.dataset.map(option => html`<option value=${option}>${option}</option>`)}
+        </select>
+      </lion-select>`,
+    "checkbox":(data) => html`
+      <lion-checkbox-group label=${data.label} name=${data.name} @input=${this.inputHandler} .validators=${data.validators || []}>
+        ${data?.dataset.map(checkbox => html`<lion-checkbox label=${checkbox} .choiceValue=${checkbox} ></lion-checkbox>`)}
+      </lion-checkbox-group>`,
+    'radio-group': (data) => html`
+      <lion-radio-group label=${data.label} name=${data.name} @input=${this.inputHandler} .validators=${data.validators || []}>
+        ${data?.dataset.map(radio => html`<lion-radio label=${radio} .choiceValue=${radio}></lion-radio>`)}
+      </lion-radio-group>`
   }
 
+  __renderByType = (field) => this.templatesForTypes[field.type](field);
+
   
-  __submitHandler() {
+  __submitHandler(event) {
+    event.preventDefault();
     this.status = true;
   } 
 
   render() {
+    console.log('this.fields => ', this.fields);
     return html`
       <lion-form @submit=${this.__submitHandler}>
         <form>
-          ${this.inputs.length ? this.inputs.map(this.__renderByType) : html`<span>Loading...</span>`}
+          ${this.fields.length ? this.fields.map(this.__renderByType) : html`<span>Loading...</span>`}
+          <lion-button-submit>Zapisz</lion-button-submit> 
         </form>
       </lion-form>
     `;
