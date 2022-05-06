@@ -10,7 +10,7 @@ import { Required, EqualsLength, MinLength, MaxLength } from '@lion/form-core';
 import { LionButtonSubmit } from '@lion/button';
 
 Required.getMessage = async (data) => `Wartość pola ${data.fieldName} jest wymagana.`;
-EqualsLength.getMessage = async (data) => `Wartość pola ${data.fieldName} nie osiągneła wymaganej ilości znaków. Wymagana długość: ${data.params}`;
+EqualsLength.getMessage = async (data) => `Wartość pola ${data.fieldName} nie uzsykała wymaganej ilości znaków. Wymagana długość: ${data.params}`;
 MinLength.getMessage = async (data) => `Wartość pola ${data.fieldName} nie osiągneła minimalnej ilości znaków. Minimalna długość: ${data.params}`;
 MaxLength.getMessage = async (data) => `Wartość pola ${data.fieldName} przekroczyła maksymalną ilości znaków. Maksymalna długość: ${data.params}`;
 
@@ -41,6 +41,9 @@ export class DynamicForm extends ScopedElementsMixin(LitElement) {
     return {
       fields: { 
         type: Array,
+      },
+      textStatus: {
+        type: String,
       }
     }
   }  
@@ -63,19 +66,26 @@ export class DynamicForm extends ScopedElementsMixin(LitElement) {
       "surname": "nazwisko",
       "nationality": "narodowość"
     }
+
     const strToValidator = {
       "required": () => new Required(),
       "max-len": (param) => new MaxLength(param),
       "min-len": (param) => new MinLength(param),
       "len": (param) => new EqualsLength(param),
     }
+
     const validatorConvert = string => {
       const [strValidator, param] = string.split(':');
       return strToValidator[strValidator](parseInt(param));
     }
+    const visibilityConvert = string => {
+      if (string === "always") return () => true;
+      return () => false;
+    }
     const fields = [];
     for (const key of Object.keys(jsonData)) {
       if (jsonData[key].validators) jsonData[key].validators = jsonData[key].validators.map(validatorConvert);
+      jsonData[key].visibility = visibilityConvert(jsonData[key].visibility);
       fields.push({
         name: key, 
         label: dictionary[key] || key,
@@ -86,22 +96,22 @@ export class DynamicForm extends ScopedElementsMixin(LitElement) {
 
   _templatesForTypes = {
     "text": (data) => html`
-      <lion-input label=${data.label} name=${data.name} .validators=${data.validators || []}></lion-input>`,
+      <lion-input label=${data.label} name=${data.name} .validators=${data.validators || []} ?hidden=${!data.visibility()}></lion-input>`,
     "textarea": (data) => html`
-       <lion-textarea label=${data.label} name=${data.name} .validators=${data.validators || []}></lion-textarea>`,
+       <lion-textarea label=${data.label} name=${data.name} .validators=${data.validators || []} ?hidden=${!data.visibility()}></lion-textarea>`,
     "select": (data) => html`
-      <lion-select label=${data.label} name=${data.name} .validators=${data.validators || []}>
+      <lion-select label=${data.label} name=${data.name} .validators=${data.validators || []} ?hidden=${!data.visibility()}>
         <select slot="input">
           <option selected hidden>Wybierz</option>
           ${data?.dataset.map(option => html`<option value=${option}>${option}</option>`)}
         </select>
       </lion-select>`,
     "checkbox":(data) => html`
-      <lion-checkbox-group label=${data.label} name=${data.name} .validators=${data.validators || []}>
+      <lion-checkbox-group label=${data.label} name=${data.name} .validators=${data.validators || []} ?hidden=${!data.visibility()}>
         ${data?.dataset.map(checkbox => html`<lion-checkbox label=${checkbox} .choiceValue=${checkbox} ></lion-checkbox>`)}
       </lion-checkbox-group>`,
     'radio-group': (data) => html`
-      <lion-radio-group label=${data.label} name=${data.name} .validators=${data.validators || []}>
+      <lion-radio-group label=${data.label} name=${data.name} .validators=${data.validators || []} ?hidden=${!data.visibility()}>
         ${data?.dataset.map(radio => html`<lion-radio label=${radio} .choiceValue=${radio}></lion-radio>`)}
       </lion-radio-group>`
   }
@@ -111,7 +121,8 @@ export class DynamicForm extends ScopedElementsMixin(LitElement) {
   
   _submitHandler(event) {
     if(event.target.hasFeedbackFor.includes('error')){
-      console.log("error subition => ",  JSON.stringify(event.target.serializedValue), "\nbutton => ", event.target.querySelector('lion-button-submit') )
+      const firstWithError = event.target.formElements.find(element => element.hasFeedbackFor.includes('error'));
+      firstWithError.focus();
       return;
     }
     event.target.querySelector('lion-button-submit').disabled = true;
@@ -120,19 +131,26 @@ export class DynamicForm extends ScopedElementsMixin(LitElement) {
       body: JSON.stringify(event.target.serializedValue),
     })
     .then(({response}) => {
-      console.log(response)
-    } )
-
+      if (response.status === 200){
+        this.textStatus = "Zapisano formularz";
+      } else {
+        this.textStatus = "Zapis nie powiódł się";
+      }
+    })
+    .catch(err => {
+      console.log(err);
+      this.textStatus = "Zapis nie powiódł się";
+    })
   } 
 
   render() {
-    console.log('this.fields => ', this.fields);
     return html`
       <lion-form @submit=${this._submitHandler}>
         <form>
           ${this.fields.length ? this.fields.map(this._renderByType) : html`<span>Loading...</span>`}
           <lion-button-submit>Zapisz</lion-button-submit> 
         </form>
+        <span>${this.textStatus && this.textStatus}</span>
       </lion-form>
     `;
   }
