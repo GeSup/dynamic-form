@@ -1,4 +1,5 @@
 import { ScopedElementsMixin, html, css, LitElement } from '@lion/core';
+import '@lion/form/define';
 import { LionInput } from '@lion/input';
 import { LionSelect } from '@lion/select';
 import { LionTextarea } from '@lion/textarea';
@@ -8,30 +9,15 @@ import { ajax } from '@lion/ajax';
 import { Required, EqualsLength, MinLength, MaxLength } from '@lion/form-core';
 import { LionButtonSubmit } from '@lion/button';
 
-Required.getMessage = async (data) => {
-  console.log('data request => ', data)
-  return `Wartość pola ${data.fieldName} jest wymagana.`
-}
-
-EqualsLength.getMessage = async (data) => {
-  console.log('data EqualsLength :>> ', data);
-  return `Wartość pola ${data.fieldName} nie osiągneła wymaganej ilości znaków. Wymagana długość: ${data.params}`
-}
-
-MinLength.getMessage = async (data) => {
-  console.log('data MinLength => ', data);
-  return `Wartość pola ${data.fieldName} nie osiągneła minimalnej ilości znaków. Minimalna długość: ${data.params}`
-}
-
-MaxLength.getMessage = async (data) => {
-  console.log('data MaxLength => ', data);
-  return `Wartość pola ${data.fieldName} przekroczyła maksymalną ilości znaków. Maksymalna długość: ${data.params}`
-}
+Required.getMessage = async (data) => `Wartość pola ${data.fieldName} jest wymagana.`;
+EqualsLength.getMessage = async (data) => `Wartość pola ${data.fieldName} nie osiągneła wymaganej ilości znaków. Wymagana długość: ${data.params}`;
+MinLength.getMessage = async (data) => `Wartość pola ${data.fieldName} nie osiągneła minimalnej ilości znaków. Minimalna długość: ${data.params}`;
+MaxLength.getMessage = async (data) => `Wartość pola ${data.fieldName} przekroczyła maksymalną ilości znaków. Maksymalna długość: ${data.params}`;
 
 export class DynamicForm extends ScopedElementsMixin(LitElement) {
 
   static get scopedElements() {
-    return {
+    return {  
       'lion-input': LionInput,
       'lion-select': LionSelect,
       'lion-textarea': LionTextarea,
@@ -64,9 +50,9 @@ export class DynamicForm extends ScopedElementsMixin(LitElement) {
     this.fields = [];
     this.__formResults = {};
     ajax.fetchJson('../api/simple-form.json')
-    .then(result => {
-      if (result.response.status === 200){
-        this.fields = this.convertJson(result.body)
+    .then(({response, body}) => {
+      if (response.status === 200){
+        this.fields = this.convertJson(body);
       }
     })
   }
@@ -85,7 +71,7 @@ export class DynamicForm extends ScopedElementsMixin(LitElement) {
     }
     const validatorConvert = string => {
       const [strValidator, param] = string.split(':');
-      return strToValidator[strValidator](param);
+      return strToValidator[strValidator](parseInt(param));
     }
     const fields = [];
     for (const key of Object.keys(jsonData)) {
@@ -98,52 +84,53 @@ export class DynamicForm extends ScopedElementsMixin(LitElement) {
     return fields;
   }
 
-  inputHandler(event){
-    if (event.target.type === 'checkbox'){
-      const checkboxes = this.__formResults[event.target.name] || {}; 
-      checkboxes[event.target.value] = event.target.checked;
-      this.__formResults[event.target.name] = checkboxes;
-    } else { 
-      this.__formResults[event.target.name] = event.target.value;
-    } console.log('this.__formResults :>> ', this.__formResults);
-  }
-
-  templatesForTypes = {
+  _templatesForTypes = {
     "text": (data) => html`
-      <lion-input label=${data.label} name=${data.name} @input=${this.inputHandler} .validators=${data.validators || []}></lion-input>`,
+      <lion-input label=${data.label} name=${data.name} .validators=${data.validators || []}></lion-input>`,
     "textarea": (data) => html`
-       <lion-textarea label=${data.label} name=${data.name} @input=${this.inputHandler} .validators=${data.validators || []}></lion-textarea>`,
+       <lion-textarea label=${data.label} name=${data.name} .validators=${data.validators || []}></lion-textarea>`,
     "select": (data) => html`
-      <lion-select label=${data.label} name=${data.name} @input=${this.inputHandler} .validators=${data.validators || []}>
+      <lion-select label=${data.label} name=${data.name} .validators=${data.validators || []}>
         <select slot="input">
           <option selected hidden>Wybierz</option>
           ${data?.dataset.map(option => html`<option value=${option}>${option}</option>`)}
         </select>
       </lion-select>`,
     "checkbox":(data) => html`
-      <lion-checkbox-group label=${data.label} name=${data.name} @input=${this.inputHandler} .validators=${data.validators || []}>
+      <lion-checkbox-group label=${data.label} name=${data.name} .validators=${data.validators || []}>
         ${data?.dataset.map(checkbox => html`<lion-checkbox label=${checkbox} .choiceValue=${checkbox} ></lion-checkbox>`)}
       </lion-checkbox-group>`,
     'radio-group': (data) => html`
-      <lion-radio-group label=${data.label} name=${data.name} @input=${this.inputHandler} .validators=${data.validators || []}>
+      <lion-radio-group label=${data.label} name=${data.name} .validators=${data.validators || []}>
         ${data?.dataset.map(radio => html`<lion-radio label=${radio} .choiceValue=${radio}></lion-radio>`)}
       </lion-radio-group>`
   }
 
-  __renderByType = (field) => this.templatesForTypes[field.type](field);
+  _renderByType = (field) => this._templatesForTypes[field.type](field);
 
   
-  __submitHandler(event) {
-    event.preventDefault();
-    this.status = true;
+  _submitHandler(event) {
+    if(event.target.hasFeedbackFor.includes('error')){
+      console.log("error subition => ",  JSON.stringify(event.target.serializedValue), "\nbutton => ", event.target.querySelector('lion-button-submit') )
+      return;
+    }
+    event.target.querySelector('lion-button-submit').disabled = true;
+    ajax.fetchJson('../api', {
+      method: 'POST',
+      body: JSON.stringify(event.target.serializedValue),
+    })
+    .then(({response}) => {
+      console.log(response)
+    } )
+
   } 
 
   render() {
     console.log('this.fields => ', this.fields);
     return html`
-      <lion-form @submit=${this.__submitHandler}>
+      <lion-form @submit=${this._submitHandler}>
         <form>
-          ${this.fields.length ? this.fields.map(this.__renderByType) : html`<span>Loading...</span>`}
+          ${this.fields.length ? this.fields.map(this._renderByType) : html`<span>Loading...</span>`}
           <lion-button-submit>Zapisz</lion-button-submit> 
         </form>
       </lion-form>

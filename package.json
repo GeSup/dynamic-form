@@ -19,6 +19,7 @@
     "@lion/button": "^0.17.0",
     "@lion/checkbox-group": "^0.20.0",
     "@lion/core": "^0.22.0",
+    "@lion/form": "^0.14.0",
     "@lion/input": "^0.17.0",
     "@lion/radio-group": "^0.20.0",
     "@lion/select": "^0.16.0",
